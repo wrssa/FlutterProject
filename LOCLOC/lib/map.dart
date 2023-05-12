@@ -1,113 +1,174 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-class ShowMap extends StatefulWidget {
-  const ShowMap({Key? key}) : super(key: key);
+class MapScreen extends StatefulWidget {
+  final int groupId;
+
+  const MapScreen({super.key, required this.groupId});
 
   @override
-// ignore: library_private_types_in_public_api
-  _ShowMapState createState() => _ShowMapState();
+  // ignore: library_private_types_in_public_api
+  _MapScreenState createState() => _MapScreenState();
 }
 
-class _ShowMapState extends State<ShowMap> {
+class _MapScreenState extends State<MapScreen> {
   final Completer<GoogleMapController> _controller = Completer();
-// on below line we have specified camera position
-  static const CameraPosition _kGoogle = CameraPosition(
-    target: LatLng(13.8009669, 100.3161236),
-    zoom: 14.4746,
-  );
+  late Position _currentPosition;
+  bool _locationLoaded = false;
+  late CameraPosition _kGoogle;
 
-// on below line we have created the list of markers
-  final List<Marker> _markers = <Marker>[
-    const Marker(
-        markerId: MarkerId('1'),
-        position: LatLng(13.8009669, 100.3161236),
-        infoWindow: InfoWindow(
-          title: 'My Position',
-        )),
-  ];
+  // on below line we have created the list of markers
+  List<Marker> _markers = [];
+  List<Map<String, dynamic>> _members = [];
 
-// created method for getting user current location
-  Future<Position> getUserCurrentLocation() async {
-    await Geolocator.requestPermission()
-        .then((value) {})
-        .onError((error, stackTrace) async {
-      await Geolocator.requestPermission();
-      print("ERROR" + error.toString());
+  // created method for getting user current location
+  Future<void> _getUserCurrentLocation() async {
+    await Geolocator.requestPermission().then((value) {}).onError(
+      (error, stackTrace) async {
+        await Geolocator.requestPermission();
+        print("ERROR" + error.toString());
+      },
+    );
+    Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      _currentPosition = position;
+      _locationLoaded = true;
+
+      // add marker for current user location
+      _markers.add(
+        Marker(
+          markerId: const MarkerId("my_location"),
+          position: LatLng(
+            _currentPosition.latitude,
+            _currentPosition.longitude,
+          ),
+          infoWindow: const InfoWindow(
+            title: 'My Location',
+          ),
+        ),
+      );
     });
-    return await Geolocator.getCurrentPosition();
+  }
+
+  // create method to get member locations from Firestore
+  Future<void> _getMemberLocations() async {
+    await FirebaseFirestore.instance
+        .collection('group')
+        .doc(widget.groupId.toString())
+        .collection('members')
+        .get()
+        .then((QuerySnapshot<Map<String, dynamic>> snapshot) {
+      snapshot.docs.forEach((DocumentSnapshot<Map<String, dynamic>> doc) {
+        final Map<String, dynamic>? data = doc.data();
+        final String name = data!['name'];
+        final double latitude = data['latitude'].toDouble();
+        final double longitude = data['longitude'].toDouble();
+        final String pic = data['pic'];
+        if (kDebugMode) {
+          print('$name $latitude $longitude');
+        }
+
+        // add member data to list
+        _members.add({
+          'name': name,
+          'latitude': latitude,
+          'longitude': longitude,
+          'pic': pic,
+        });
+      });
+
+      // add markers for member locations
+      _members.forEach((Map<String, dynamic> member) {
+        _markers.add(
+          Marker(
+            markerId: MarkerId(member['name']),
+            position: LatLng(member['latitude'], member['longitude']),
+            infoWindow: InfoWindow(
+              title: member['name'],
+            ),
+          ),
+        );
+      });
+
+      setState(() {});
+    }).onError((error, stackTrace) {
+      if (kDebugMode) {
+        print(error.toString());
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _getMemberLocations().then((_) {
+      if (_members.isNotEmpty) {
+        Map<String, dynamic> firstMember = _members.first;
+        setState(() {
+          _kGoogle = CameraPosition(
+            target: LatLng(
+              firstMember['latitude'],
+              firstMember['longitude'],
+            ),
+            zoom: 15,
+          );
+        });
+      }
+      _getUserCurrentLocation();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // on below line we have given title of app
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Image(
-              image: AssetImage('assets/logo.png'),
-              width: 80,
-              height: 80,
-            ),
-            SizedBox(width: 8),
-          ],
-        ),
-        toolbarHeight: 100,
-        backgroundColor: Colors.red,
+        title: const Text('Group Location'),
       ),
-      body: Container(
-        child: SafeArea(
-          // on below line creating google maps
-          child: GoogleMap(
-            // on below line setting camera position
-            initialCameraPosition: _kGoogle,
-            // on below line we are setting markers on the map
-            markers: Set<Marker>.of(_markers),
-            // on below line specifying map type.
-            mapType: MapType.normal,
-            // on below line setting user location enabled.
-            myLocationEnabled: true,
-            // on below line setting compass enabled.
-            compassEnabled: true,
-            // on below line specifying controller on map complete.
-            onMapCreated: (GoogleMapController controller) {
-              _controller.complete(controller);
-            },
+      body: Column(
+        children: [
+          Expanded(
+            child: _locationLoaded
+                ? GoogleMap(
+                    initialCameraPosition: _kGoogle,
+                    markers: Set<Marker>.of(_markers),
+                    myLocationEnabled: true,
+                    compassEnabled: true,
+                    onMapCreated: (GoogleMapController controller) {
+                      _controller.complete(controller);
+                    },
+                  )
+                : const Center(
+                    child: CircularProgressIndicator(),
+                  ),
           ),
-        ),
-      ),
-      // on pressing floating action button the camera will take to user current location
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          getUserCurrentLocation().then((value) async {
-            print(value.latitude.toString() + " " + value.longitude.toString());
-
-            // marker added for current users location
-            _markers.add(Marker(
-              markerId: const MarkerId("2"),
-              position: LatLng(value.latitude, value.longitude),
-              infoWindow: const InfoWindow(
-                title: 'My Current Location',
-              ),
-            ));
-
-            // specified current users location
-            CameraPosition cameraPosition = CameraPosition(
-              target: LatLng(value.latitude, value.longitude),
-              zoom: 14,
-            );
-
-            final GoogleMapController controller = await _controller.future;
-            controller
-                .animateCamera(CameraUpdate.newCameraPosition(cameraPosition));
-            setState(() {});
-          });
-        },
-        child: const Icon(Icons.local_activity),
+          SizedBox(
+            height: 120,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _members.length,
+              itemBuilder: (BuildContext context, int index) {
+                final member = _members[index];
+                return SizedBox(
+                  width: 120,
+                  child: Column(
+                    children: [
+                      if (member['pic'] != null)
+                        CircleAvatar(
+                          backgroundImage: NetworkImage(member['pic']),
+                          radius: 30,
+                        ),
+                      Text(member['name']),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

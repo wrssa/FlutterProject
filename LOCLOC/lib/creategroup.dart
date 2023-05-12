@@ -180,6 +180,10 @@ class _CreateGroupState extends State<CreateGroup> {
               child: ElevatedButton(
                 onPressed: () {
                   // Implement create group logic here
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomePage()),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   // ignore: deprecated_member_use

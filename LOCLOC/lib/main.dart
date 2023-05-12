@@ -1,15 +1,17 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-// ignore: depend_on_referenced_packages
-//import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_application_1/firebase_options.dart';
 import 'home.dart';
 import 'map.dart';
 import 'signin.dart';
 import 'creategroup.dart';
 import 'profile.dart';
 
-void main() async {
-  // WidgetsFlutterBinding.ensureInitialized();
-  // await Firebase.initializeApp();
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -27,7 +29,7 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const HomePage(),
         '/create-group': (context) => const CreateGroup(),
         '/profile': (context) => const Profile(),
-        '/showmap': (context) => const ShowMap(),
+        '/showmap': (context) => MapScreen(groupId: 0),
       },
     );
   }
